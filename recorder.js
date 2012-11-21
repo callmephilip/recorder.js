@@ -69,12 +69,13 @@ var Recorder = {
   upload: function(options){
     options.audioParam = options.audioParam || "audio";
     options.params     = options.params || {};
+    options.audioFormat= options.audioFormat || Recorder.AUDIO_FORMAT_WAV;
     this.clearBindings("uploadSuccess");
     this.bind("uploadSuccess", function(responseText){
       options.success(Recorder._externalInterfaceDecode(responseText));
     });
     
-    this.flashInterface().upload(options.url, options.audioParam, options.params);
+    this.flashInterface().upload(options.url, options.audioParam, options.params, options.audioFormat);
   },
   
   audioData: function(newData){
@@ -205,6 +206,8 @@ var Recorder = {
   }
 };
 
+Recorder.AUDIO_FORMAT_WAV = 0;
+Recorder.AUDIO_FORMAT_MP3 = 1;
 
 if(swfobject==undefined){
   /*	SWFObject v2.2 <http://code.google.com/p/swfobject/> is released under the MIT License <http://www.opensource.org/licenses/mit-license.php */

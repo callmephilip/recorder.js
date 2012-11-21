@@ -1,30 +1,36 @@
 package  
 {
+	import cmodule.shine.CLibInit;
+	
 	import com.adobe.audio.format.WAVWriter;
-	import flash.events.TimerEvent;
-	import flash.events.Event;
+	
 	import flash.events.ErrorEvent;
+	import flash.events.Event;
 	import flash.events.SampleDataEvent;
+	import flash.events.StatusEvent;
+	import flash.events.TimerEvent;
 	import flash.external.ExternalInterface;
 	import flash.media.Microphone;
 	import flash.media.Sound;
 	import flash.media.SoundChannel;
 	import flash.system.Capabilities;
-	import flash.utils.ByteArray;
-	import flash.utils.getTimer;
-	import flash.utils.Timer;
 	import flash.system.Security;
 	import flash.system.SecurityPanel;
-	import flash.events.StatusEvent;
-    import flash.utils.getQualifiedClassName;
+	import flash.utils.ByteArray;
+	import flash.utils.Timer;
+	import flash.utils.getQualifiedClassName;
+	import flash.utils.getTimer;
 	
-	import mx.collections.ArrayCollection;
+	import fr.kikko.lab.ShineMp3Encoder;
 	
 	import ru.inspirit.net.MultipartURLLoader;
 
 	
 	public class Recorder
 	{
+		public static const AUDIO_FORMAT_WAV : int = 0;
+		public static const AUDIO_FORMAT_MP3 : int = 1;
+		
 		public function Recorder(logger)
 		{
 			this.logger = logger;
@@ -128,11 +134,11 @@ package
 		
 		/* Networking functions */ 
 		
-		protected function upload(uri:String, audioParam:String, parameters): void
+		protected function upload(uri:String, audioParam:String, parameters, format : int = 0): void
 		{
 			logger.log("upload");
 			buffer.position = 0;
-			var wav:ByteArray = prepareWav();					
+			
 			var ml:MultipartURLLoader = new MultipartURLLoader();
 			ml.addEventListener(Event.COMPLETE, onReady);
 			function onReady(e:Event):void
@@ -151,8 +157,24 @@ package
 				}
 			}
 			
-			ml.addFile(wav, 'audio.wav', audioParam);
-			ml.load(uri, false);
+			var fileName : String;
+			var wavFile:ByteArray = prepareWav();
+			
+			if(format == AUDIO_FORMAT_MP3)
+			{
+				fileName = "audio.mp3";
+				prepareMp3(wavFile, function(mp3Data : ByteArray) : void {
+					ml.addFile(mp3Data, fileName, audioParam);
+					ml.load(uri, false);
+				});
+			}
+			else
+			{
+				fileName = "audio.wav";
+				
+				ml.addFile(wavFile, fileName, audioParam);
+				ml.load(uri, false);
+			}
 			
 		}
 		
@@ -234,6 +256,20 @@ package
 			wavWriter.samplingRate = sampleRate * 1000;
 			wavWriter.processSamples(wavData, buffer, sampleRate * 1000, 1);
 			return wavData;
+		}
+		
+		protected function prepareMp3(wavData : ByteArray, callback : Function, target : Object = null) : ByteArray
+		{
+			wavData.position = 0;
+			var shine : ShineMp3Encoder = new ShineMp3Encoder(wavData);
+			shine.addEventListener(Event.COMPLETE, function(event : Event) : void {
+				shine.removeEventListener(event.type, arguments.callee);
+				
+				callback.apply(target, [shine.mp3Data]);
+			});
+			
+			shine.start();
+			return shine.mp3Data;
 		}
 		
 		protected function recordingDuration():int
