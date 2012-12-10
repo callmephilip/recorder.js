@@ -42,7 +42,8 @@
     });
     $("#stop").on("click", function(){
       log("Calling Recorder.stop()");
-      Recorder.stop()
+      Recorder.stop();
+	  Recorder.encode(Recorder.AUDIO_FORMAT_MP3);
     });
     $("#play").on("click", function(){
       log("Calling Recorder.play()");
@@ -73,6 +74,7 @@
     $("#getDebugLog").on("click", function(){
       log(" === Flash Debug Log === \n" + Recorder.flashInterface().debugLog().join("\n") + " === End Debug Log === \n");
     });
+
   });
   </script>
   </head>

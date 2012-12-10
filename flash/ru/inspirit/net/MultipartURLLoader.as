@@ -569,11 +569,12 @@
 
 	}
 }
+import flash.utils.ByteArray;
 
 internal class FilePart
 {
 
-	public var fileContent:flash.utils.ByteArray;
+	public var fileContent:ByteArray;
 	public var fileName:String;
 	public var dataField:String;
 	public var contentType:String;

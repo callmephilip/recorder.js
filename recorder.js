@@ -78,6 +78,12 @@ var Recorder = {
     this.flashInterface().upload(options.url, options.audioParam, options.params, options.audioFormat);
   },
   
+  encode: function(audioFormat) {
+	var audioFormat = audioFormat || Recorder.AUDIO_FORMAT_WAV;
+	
+	this.flashInterface().encode(audioFormat);
+  },
+  
   audioData: function(newData){
     var delimiter = ";", newDataSerialized, stringData, data = [], sample;
     if(newData){

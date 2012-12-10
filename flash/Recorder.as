@@ -1,6 +1,5 @@
 package  
 {
-	import cmodule.shine.CLibInit;
 	
 	import com.adobe.audio.format.WAVWriter;
 	
@@ -13,11 +12,14 @@ package
 	import flash.media.Microphone;
 	import flash.media.Sound;
 	import flash.media.SoundChannel;
+	import flash.net.FileReference;
+	import flash.system.ApplicationDomain;
 	import flash.system.Capabilities;
 	import flash.system.Security;
 	import flash.system.SecurityPanel;
 	import flash.utils.ByteArray;
 	import flash.utils.Timer;
+	import flash.utils.getDefinitionByName;
 	import flash.utils.getQualifiedClassName;
 	import flash.utils.getTimer;
 	
@@ -31,12 +33,52 @@ package
 		public static const AUDIO_FORMAT_WAV : int = 0;
 		public static const AUDIO_FORMAT_MP3 : int = 1;
 		
-		public function Recorder(logger)
+		private var mainToWorker : Object;
+		private var workerToMain : Object;
+		private var worker : Object;
+		
+		private var Worker : *;
+		private var WorkerDomain : *;
+		private var MessageChannel : *;
+		
+		public function Recorder(logger : Logger, bytes : ByteArray = null)
 		{
 			this.logger = logger;
+			
+			if(ApplicationDomain.currentDomain.hasDefinition("flash.system.Worker"))
+			{
+				Worker = getDefinitionByName("flash.system.Worker");
+				WorkerDomain = getDefinitionByName("flash.system.WorkerDomain");
+				MessageChannel = getDefinitionByName("flash.system.MessageChannel");
+			} 
+			
+			if(Worker)
+			{
+				if(Worker.current.isPrimordial)
+				{
+					worker = WorkerDomain.current.createWorker(bytes);
+					
+					mainToWorker = Worker.current.createMessageChannel(worker);
+					worker.setSharedProperty("mainToWorker", mainToWorker);
+					
+					workerToMain = worker.createMessageChannel(Worker.current);
+					workerToMain.addEventListener(Event.CHANNEL_MESSAGE, messageFromWorker);
+					worker.setSharedProperty("workerToMain", workerToMain);
+					
+					worker.addEventListener(Event.WORKER_STATE, workerStateChange);
+					worker.start();
+				}
+				else
+				{
+					mainToWorker = Worker.current.getSharedProperty("mainToWorker") as MessageChannel;
+					mainToWorker.addEventListener(Event.CHANNEL_MESSAGE, messageFromMain);
+					
+					workerToMain = Worker.current.getSharedProperty("workerToMain") as MessageChannel;
+				}
+			}
 		}
 		
-		private var logger;
+		private var logger : Logger;
 		public function addExternalInterfaceCallbacks():void {
 			ExternalInterface.addCallback("record", 		this.record);
 			ExternalInterface.addCallback("_stop",  		this.stop);
@@ -46,9 +88,17 @@ package
 			ExternalInterface.addCallback("showFlash",      this.showFlash);
 			ExternalInterface.addCallback("recordingDuration",     this.recordingDuration);
 			ExternalInterface.addCallback("playDuration",     this.playDuration);
+			ExternalInterface.addCallback("encode",			this.encode);
+			ExternalInterface.addCallback("saveAudioFile",	this.saveAudioFile);
 
 			triggerEvent("initialized", {});
 			logger.log("Recorder initialized");
+			
+//			ExternalInterface.call('function(){' +
+//				'$("#saveAudioFile").on("click", function(){' +
+//				'Recorder.flashInterface().saveAudioFile();' +
+//				'});' +
+//				'}');
 		}
 
 		
@@ -61,7 +111,14 @@ package
 		protected var sound:Sound;
 		protected var channel:SoundChannel;
 		protected var recordingStartTime = 0;
+		protected var lastRecordDuration : int = 0;
 		protected static var sampleRate = 44.1;
+		
+		protected var wavData : ByteArray;
+		protected var lastEncoding : ByteArray;
+		protected var mp3Encoder : ShineMp3Encoder;
+		protected var encoding : Boolean;
+		protected var lastUploadCall : Array;
 		
 		protected function record():void
 		{
@@ -87,7 +144,125 @@ package
 			isRecording = false;
 			triggerEvent('recordingStop', {duration: recordingDuration()});
 			microphone.removeEventListener(SampleDataEvent.SAMPLE_DATA, recordSampleDataHandler);
-			return recordingDuration();
+			lastRecordDuration = recordingDuration();
+			return lastRecordDuration;
+		}
+		
+		protected function encode(audioFormat : int) : void
+		{
+			if(encoding || buffer.length == 0 || lastRecordDuration <= 0)
+				return;
+			
+			if(Worker && Worker.current.isPrimordial)
+			{
+				worker.setSharedProperty("buffer", buffer);
+				worker.setSharedProperty("lastRecordDuration", lastRecordDuration);
+				mainToWorker.send("encode");
+				mainToWorker.send(audioFormat);
+				
+				if(!lastEncoding && audioFormat == AUDIO_FORMAT_MP3)
+				{
+					encoding = true;
+				}
+				
+				return;
+			}
+			
+			if(mp3Encoder)
+			{
+				mp3Encoder.cancel();
+			}
+			else
+			{
+				mp3Encoder = new ShineMp3Encoder();
+				mp3Encoder.addEventListener(Event.COMPLETE, encodingComplete);
+			}
+			
+			if(!wavData)
+			{
+				buffer.position = 0;
+				wavData = prepareWav();
+			}
+			
+			if(!lastEncoding && audioFormat == AUDIO_FORMAT_MP3)
+			{
+				wavData.position = 0;
+				mp3Encoder.start(wavData, lastRecordDuration);
+				encoding = true;
+			}
+		}
+		
+		protected function encodingComplete(event: Event) : void
+		{
+			encoding = false;
+			if(mp3Encoder)
+			{
+				lastEncoding = mp3Encoder.mp3Data;
+			
+				mp3Encoder.wavData = null;
+				mp3Encoder.mp3Data = null;
+			}
+			
+			if(!Worker || Worker.current.isPrimordial)
+			{
+				if(lastUploadCall)
+				{
+					this.upload.apply(null, lastUploadCall);
+					lastUploadCall = null;
+				}
+				
+//				triggerEvent('showFlash','');
+			}
+			else
+			{
+				Worker.current.setSharedProperty("mp3Data", lastEncoding);
+				workerToMain.send("encodingComplete");
+			}
+		}
+		
+		private function messageFromMain(event : Event) : void
+		{
+			var message : String = mainToWorker.receive() as String;
+			
+			switch(message)
+			{
+				case "encode":
+					var audioFormat : int = mainToWorker.receive() as int;
+					buffer = Worker.current.getSharedProperty("buffer") as ByteArray;
+					lastRecordDuration = Worker.current.getSharedProperty("lastRecordDuration") as int;
+					encode(audioFormat);
+					break;
+				case "cancel":
+					wavData = null;
+					if(mp3Encoder)
+						mp3Encoder.cancel();
+					lastEncoding = null;
+					encoding = false;
+					break;
+			}
+		}
+		
+		private function messageFromWorker(event : Event) : void
+		{
+			var message : String = workerToMain.receive().toString();
+			
+			switch(message)
+			{
+				case "encodingComplete":
+					lastEncoding = worker.getSharedProperty("mp3Data") as ByteArray;
+					encodingComplete(null);
+			}
+		}
+		
+		private function workerStateChange(event : Event) : void
+		{
+			
+		}
+		
+		public function saveAudioFile() : void
+		{
+			if(lastEncoding)
+				(new FileReference()).save(lastEncoding, "audio.mp3");
 		}
 		
 		protected function play():void
@@ -136,6 +311,11 @@ package
 		
 		protected function upload(uri:String, audioParam:String, parameters, format : int = 0): void
 		{
+			if(format == AUDIO_FORMAT_MP3 && encoding)
+			{
+				lastUploadCall = [uri, audioParam, parameters, format];
+				return;
+			}
 			logger.log("upload");
 			buffer.position = 0;
 			
@@ -158,21 +338,22 @@ package
 			}
 			
 			var fileName : String;
-			var wavFile:ByteArray = prepareWav();
 			
-			if(format == AUDIO_FORMAT_MP3)
+			
+			if(format == AUDIO_FORMAT_MP3 && lastEncoding)
 			{
 				fileName = "audio.mp3";
-				prepareMp3(wavFile, function(mp3Data : ByteArray) : void {
-					ml.addFile(mp3Data, fileName, audioParam);
-					ml.load(uri, false);
-				});
+				ml.addFile(lastEncoding, fileName, audioParam);
+				ml.load(uri, false);
 			}
 			else
 			{
 				fileName = "audio.wav";
 				
-				ml.addFile(wavFile, fileName, audioParam);
+				if(!wavData)
+					wavData = prepareWav();
+				
+				ml.addFile(wavData, fileName, audioParam);
 				ml.load(uri, false);
 			}
 			
@@ -242,6 +423,16 @@ package
 			triggerEvent('recordingStart', {});
 			logger.log('startRecording');
 			isRecording = true;
+			
+			wavData = null;
+			lastEncoding = null;
+			if(mp3Encoder)
+				mp3Encoder.cancel();
+			encoding = false;
+			lastUploadCall = null;
+			
+			if(Worker)
+				mainToWorker.send("cancel");
 		}
 		
 		/* Sample related */
@@ -258,23 +449,9 @@ package
 			return wavData;
 		}
 		
-		protected function prepareMp3(wavData : ByteArray, callback : Function, target : Object = null) : ByteArray
-		{
-			wavData.position = 0;
-			var shine : ShineMp3Encoder = new ShineMp3Encoder(wavData);
-			shine.addEventListener(Event.COMPLETE, function(event : Event) : void {
-				shine.removeEventListener(event.type, arguments.callee);
-				
-				callback.apply(target, [shine.mp3Data]);
-			});
-			
-			shine.start();
-			return shine.mp3Data;
-		}
-		
 		protected function recordingDuration():int
 		{
-			var duration = int(getTimer() - recordingStartTime);
+			var duration : int = int(getTimer() - recordingStartTime);
 			return Math.max(duration, 0);
 		}
 
