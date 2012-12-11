@@ -3,7 +3,6 @@ package
 	
 	import com.adobe.audio.format.WAVWriter;
 	
-	import flash.events.ErrorEvent;
 	import flash.events.Event;
 	import flash.events.SampleDataEvent;
 	import flash.events.StatusEvent;
@@ -14,7 +13,6 @@ package
 	import flash.media.SoundChannel;
 	import flash.net.FileReference;
 	import flash.system.ApplicationDomain;
-	import flash.system.Capabilities;
 	import flash.system.Security;
 	import flash.system.SecurityPanel;
 	import flash.utils.ByteArray;
@@ -41,39 +39,42 @@ package
 		private var WorkerDomain : *;
 		private var MessageChannel : *;
 		
-		public function Recorder(logger : Logger, bytes : ByteArray = null)
+		public function Recorder(logger : Logger, useWorkers : Boolean = true, bytes : ByteArray = null)
 		{
 			this.logger = logger;
 			
-			if(ApplicationDomain.currentDomain.hasDefinition("flash.system.Worker"))
+			if(useWorkers)
 			{
-				Worker = getDefinitionByName("flash.system.Worker");
-				WorkerDomain = getDefinitionByName("flash.system.WorkerDomain");
-				MessageChannel = getDefinitionByName("flash.system.MessageChannel");
-			} 
-			
-			if(Worker)
-			{
-				if(Worker.current.isPrimordial)
+				if(ApplicationDomain.currentDomain.hasDefinition("flash.system.Worker"))
 				{
-					worker = WorkerDomain.current.createWorker(bytes);
-					
-					mainToWorker = Worker.current.createMessageChannel(worker);
-					worker.setSharedProperty("mainToWorker", mainToWorker);
-					
-					workerToMain = worker.createMessageChannel(Worker.current);
-					workerToMain.addEventListener(Event.CHANNEL_MESSAGE, messageFromWorker);
-					worker.setSharedProperty("workerToMain", workerToMain);
-					
-					worker.addEventListener(Event.WORKER_STATE, workerStateChange);
-					worker.start();
-				}
-				else
+					Worker = getDefinitionByName("flash.system.Worker");
+					WorkerDomain = getDefinitionByName("flash.system.WorkerDomain");
+					MessageChannel = getDefinitionByName("flash.system.MessageChannel");
+				} 
+				
+				if(Worker)
 				{
-					mainToWorker = Worker.current.getSharedProperty("mainToWorker") as MessageChannel;
-					mainToWorker.addEventListener(Event.CHANNEL_MESSAGE, messageFromMain);
-					
-					workerToMain = Worker.current.getSharedProperty("workerToMain") as MessageChannel;
+					if(Worker.current.isPrimordial)
+					{
+						worker = WorkerDomain.current.createWorker(bytes);
+						
+						mainToWorker = Worker.current.createMessageChannel(worker);
+						worker.setSharedProperty("mainToWorker", mainToWorker);
+						
+						workerToMain = worker.createMessageChannel(Worker.current);
+						workerToMain.addEventListener(Event.CHANNEL_MESSAGE, messageFromWorker);
+						worker.setSharedProperty("workerToMain", workerToMain);
+						
+						worker.addEventListener(Event.WORKER_STATE, workerStateChange);
+						worker.start();
+					}
+					else
+					{
+						mainToWorker = Worker.current.getSharedProperty("mainToWorker") as MessageChannel;
+						mainToWorker.addEventListener(Event.CHANNEL_MESSAGE, messageFromMain);
+						
+						workerToMain = Worker.current.getSharedProperty("workerToMain") as MessageChannel;
+					}
 				}
 			}
 		}
