@@ -30,7 +30,8 @@ package
 	{
 		public static const AUDIO_FORMAT_WAV : int = 0;
 		public static const AUDIO_FORMAT_MP3 : int = 1;
-		
+		private static const ENCODING_COMPLETE_CALLBACK : String = "__openmic_encoding_complete";
+
 		private var mainToWorker : Object;
 		private var workerToMain : Object;
 		private var worker : Object;
@@ -193,6 +194,17 @@ package
 			}
 		}
 		
+		protected function serializeForTransport(buffer: ByteArray){
+			var delimiter = ";"
+			var ret:String="";
+			buffer.position = 0;
+			while (buffer.bytesAvailable > 0)
+			{
+				ret += buffer.readUnsignedByte().toString() + delimiter;
+			}
+			return ret;
+		}
+
 		protected function encodingComplete(event: Event) : void
 		{
 			encoding = false;
@@ -212,12 +224,18 @@ package
 					lastUploadCall = null;
 				}
 				
+				ExternalInterface.call(ENCODING_COMPLETE_CALLBACK,
+					serializeForTransport(lastEncoding));
+
 //				triggerEvent('showFlash','');
 			}
 			else
 			{
 				Worker.current.setSharedProperty("mp3Data", lastEncoding);
 				workerToMain.send("encodingComplete");
+
+				ExternalInterface.call(ENCODING_COMPLETE_CALLBACK,
+					serializeForTransport(lastEncoding));
 			}
 		}
 		
