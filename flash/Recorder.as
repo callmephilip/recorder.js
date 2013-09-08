@@ -419,13 +419,18 @@ package
 			microphone.rate = sampleRate;
 			microphone.gain = 50;
 			microphone.addEventListener(StatusEvent.STATUS, function statusHandler(e:Event) {
+
 				logger.log('Microphone Status Change');
 				if(microphone.muted){
 					triggerEvent('recordingCancel','');
+					triggerEvent('microphoneAccessDenied','');	
 				}else{
+					triggerEvent('gotMicrophone','');
+					triggerEvent('hideFlash','');
+					/*
 					if(!isRecording){
 						notifyRecordingStarted();
-					}
+					}*/
 				}
 			});
 
