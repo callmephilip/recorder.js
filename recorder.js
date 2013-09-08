@@ -158,7 +158,7 @@ var Recorder = {
   _setupFlashContainer: function(){
     this.options.flashContainer = document.createElement("div");
     this.options.flashContainer.setAttribute("id", "recorderFlashContainer");
-    this.options.flashContainer.setAttribute("style", "position: fixed; left: -9999px; top: -9999px; width: 230px; height: 140px; margin-left: 10px; border-top: 6px solid rgba(128, 128, 128, 0.6); border-bottom: 6px solid rgba(128, 128, 128, 0.6); border-radius: 5px 5px; padding-bottom: 1px; padding-right: 1px;");
+    this.options.flashContainer.setAttribute("style", "position: fixed; z-index:10000; left: -9999px; top: -9999px; width: 230px; height: 140px; margin-left: 10px; border-top: 6px solid rgba(128, 128, 128, 0.6); border-bottom: 6px solid rgba(128, 128, 128, 0.6); border-radius: 5px 5px; padding-bottom: 1px; padding-right: 1px;");
     document.body.appendChild(this.options.flashContainer);
   },
 
