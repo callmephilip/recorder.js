@@ -37,24 +37,29 @@ var Recorder = {
   },
 
   record: function(options){
-    options = options || {};
-    this.clearBindings("recordingStart");
-    this.clearBindings("recordingProgress");
-    this.clearBindings("recordingCancel");
+    if(!this._recording){
+      options = options || {};
+      this.clearBindings("recordingStart");
+      this.clearBindings("recordingProgress");
+      this.clearBindings("recordingCancel");
 
-    this.bind('recordingStart',  this._defaultOnHideFlash);
-    this.bind('recordingCancel', this._defaultOnHideFlash);
-    // reload flash to allow mic permission dialog to show again
-    this.bind('recordingCancel', this._loadFlash);
+      this.bind('recordingStart',  this._defaultOnHideFlash);
+      this.bind('recordingCancel', this._defaultOnHideFlash);
+      // reload flash to allow mic permission dialog to show again
+      this.bind('recordingCancel', this._loadFlash);
 
-    this.bind('recordingStart',    options['start']);
-    this.bind('recordingProgress', options['progress']);
-    this.bind('recordingCancel',   options['cancel']);
+      this.bind('recordingStart',    options['start']);
+      this.bind('recordingProgress', options['progress']);
+      this.bind('recordingCancel',   options['cancel']);
 
-    this.flashInterface().record();
+      this.flashInterface().record();
+
+      this._recording = true;
+    }
   },
   
   stop: function(){
+    this._recording = false;
     return this.flashInterface()._stop();
   },
   
